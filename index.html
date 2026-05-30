@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Taiwan Financial Statement Excel Builder</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">MOPS workbook generator</p>
+          <h1>Taiwan financial statement Excel builder</h1>
+        </div>
+        <div class="status-pill" id="server-status">Ready</div>
+      </header>
+
+      <section class="workspace">
+        <form class="generator-panel" id="generator-form">
+          <div class="field-grid">
+            <label>
+              <span>Company code</span>
+              <input id="company-code" name="companyCode" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="1464" value="1464" required>
+            </label>
+
+            <label>
+              <span>Start year</span>
+              <input id="start-year" name="startYear" inputmode="numeric" maxlength="4" placeholder="2020" value="2020" required>
+            </label>
+
+            <label>
+              <span>End year</span>
+              <input id="end-year" name="endYear" inputmode="numeric" maxlength="4" placeholder="2025" value="2025" required>
+            </label>
+
+            <label>
+              <span>Report basis</span>
+              <select id="report-basis" name="reportBasis">
+                <option value="C" selected>Consolidated</option>
+                <option value="A">Individual</option>
+                <option value="B">Separate</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="actions">
+            <button class="primary-button" type="submit">
+              <span aria-hidden="true">↓</span>
+              Generate Excel
+            </button>
+            <button class="secondary-button" id="reset-button" type="button">Reset</button>
+          </div>
+        </form>
+
+        <section class="result-panel" aria-live="polite">
+          <div class="progress-box">
+            <div class="progress-header">
+              <span id="progress-label">Waiting for request</span>
+              <span id="progress-count">0%</span>
+            </div>
+            <div class="progress-track">
+              <div id="progress-bar"></div>
+            </div>
+          </div>
+
+          <div class="summary-grid" id="summary-grid">
+            <div>
+              <span>Company</span>
+              <strong id="summary-company">-</strong>
+            </div>
+            <div>
+              <span>Period</span>
+              <strong id="summary-period">-</strong>
+            </div>
+            <div>
+              <span>Workbook</span>
+              <strong id="summary-status">Not generated</strong>
+            </div>
+          </div>
+
+          <a class="download-link hidden" id="download-link" href="#" download>
+            <span aria-hidden="true">↧</span>
+            Download workbook
+          </a>
+
+          <pre id="log-output"></pre>
+        </section>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
