@@ -11,7 +11,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-COPY package.json .npmrc ./
+COPY package.json ./
 RUN npm install --omit=dev
 
 COPY requirements.txt ./
