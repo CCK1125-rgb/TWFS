@@ -57,7 +57,15 @@ def fetch_html(company_code, endpoint, year, report_basis):
         f"{BASE}/{endpoint}?TYPEK=sii&step=show&co_id={company_code}"
         f"&year={year}&season=4&report_id={report_basis}"
     )
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,zh-TW;q=0.8",
+            "Referer": f"{BASE}/{endpoint}?TYPEK=sii&step=historical&co_id={company_code}",
+        },
+    )
     with urllib.request.urlopen(req, timeout=30) as response:
         raw = response.read()
     return raw.decode("big5", "ignore"), url
@@ -133,7 +141,8 @@ def read_html_tables(html, cfg, company_code, year):
     tables = parse_html_tables(html)
     if tables:
         return tables
-    raise RuntimeError(f"Could not read {cfg['title']} table for {company_code} in {year}: no HTML tables found.")
+    snippet = clean_label(re.sub(r"<[^>]+>", " ", html))[:500]
+    raise RuntimeError(f"Could not read {cfg['title']} table for {company_code} in {year}: no HTML tables found. Response started with: {snippet}")
 
 
 def select_statement_table(tables, cfg, year):
