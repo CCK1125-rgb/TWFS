@@ -1,13 +1,12 @@
-﻿import argparse
-import io
+import argparse
 import json
+import math
 import re
 import sys
 import time
 import urllib.request
 from datetime import datetime, timezone
-
-import pandas as pd
+from html.parser import HTMLParser
 
 
 sys.stdout.reconfigure(encoding="utf-8")
@@ -34,13 +33,13 @@ STATEMENTS = {
 
 
 def clean_label(value):
-    if value is None or (isinstance(value, float) and pd.isna(value)):
+    if value is None or (isinstance(value, float) and math.isnan(value)):
         return ""
     return re.sub(r"\s+", " ", str(value).replace("\u3000", " ")).strip()
 
 
 def to_number(value):
-    if value is None or (isinstance(value, float) and pd.isna(value)):
+    if value is None or (isinstance(value, float) and math.isnan(value)):
         return None
     if isinstance(value, (int, float)):
         return float(value)
@@ -64,21 +63,66 @@ def fetch_html(company_code, endpoint, year, report_basis):
     return raw.decode("big5", "ignore"), url
 
 
-def flatten_columns(df):
-    columns = []
-    for col in df.columns:
-        if isinstance(col, tuple):
-            columns.append(" ".join(clean_label(part) for part in col if clean_label(part)))
-        else:
-            columns.append(clean_label(col))
-    df = df.copy()
-    df.columns = columns
-    return df
+class HtmlTableParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.tables = []
+        self.stack = []
+        self.current_cell = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "table":
+            self.stack.append({"rows": [], "row": None})
+        elif tag == "tr" and self.stack:
+            self.stack[-1]["row"] = []
+        elif tag in {"td", "th"} and self.stack and self.stack[-1]["row"] is not None:
+            self.current_cell = ""
+
+    def handle_data(self, data):
+        if self.current_cell is not None:
+            self.current_cell += data
+
+    def handle_endtag(self, tag):
+        if tag in {"td", "th"} and self.stack and self.current_cell is not None:
+            self.stack[-1]["row"].append(clean_label(self.current_cell))
+            self.current_cell = None
+        elif tag == "tr" and self.stack:
+            row = self.stack[-1]["row"]
+            if row and any(clean_label(cell) for cell in row):
+                self.stack[-1]["rows"].append(row)
+            self.stack[-1]["row"] = None
+        elif tag == "table" and self.stack:
+            table = self.stack.pop()
+            if table["rows"]:
+                self.tables.append(table["rows"])
+
+
+class SimpleTable:
+    def __init__(self, rows):
+        self.rows = rows
+        self.columns = rows[0] if rows else []
+        self.data_rows = rows[1:] if rows else []
+
+    def all_text(self):
+        return " ".join(clean_label(value) for row in self.rows for value in row)
+
+    def first_column_head_text(self, limit=12):
+        return " ".join(clean_label(row[0]) for row in self.data_rows[:limit] if row)
+
+    def iter_records(self):
+        for row in self.data_rows:
+            yield {column: row[idx] if idx < len(row) else "" for idx, column in enumerate(self.columns)}
+
+
+def parse_html_tables(html):
+    parser = HtmlTableParser()
+    parser.feed(html)
+    return [SimpleTable(rows) for rows in parser.tables if rows]
 
 
 def parse_company_name(tables):
     for table in tables[:2]:
-        text = " ".join(clean_label(value) for value in table.astype(str).values.flatten())
+        text = table.all_text()
         match = re.search(r"Provided by:\s*([^\.]+(?:\.[^F]+)?)\s+Finacial year", text)
         if match:
             return clean_label(match.group(1))
@@ -86,32 +130,24 @@ def parse_company_name(tables):
 
 
 def read_html_tables(html, cfg, company_code, year):
-    last_error = None
-    for attempt in range(3):
-        try:
-            tables = pd.read_html(io.StringIO(html), flavor="lxml")
-            if tables:
-                return tables
-        except ValueError as exc:
-            last_error = exc
-        time.sleep(0.5 * (attempt + 1))
-    detail = f": {last_error}" if last_error else ""
-    raise RuntimeError(f"Could not read {cfg['title']} table for {company_code} in {year}{detail}.")
+    tables = parse_html_tables(html)
+    if tables:
+        return tables
+    raise RuntimeError(f"Could not read {cfg['title']} table for {company_code} in {year}: no HTML tables found.")
 
 
 def select_statement_table(tables, cfg, year):
     period_token = f"{year}{cfg['period_suffix']}"
     candidates = []
     for table in tables:
-        data = flatten_columns(table)
-        if len(data.columns) < 2:
+        if len(table.columns) < 2:
             continue
-        columns_text = " ".join(data.columns)
-        first_col_text = " ".join(clean_label(value) for value in data.iloc[:, 0].head(12))
+        columns_text = " ".join(table.columns)
+        first_col_text = table.first_column_head_text()
         if period_token in columns_text:
-            return data
+            return table
         if cfg["title"] in columns_text or cfg["title"] in first_col_text:
-            candidates.append(data)
+            candidates.append(table)
     if candidates:
         return candidates[-1]
     return None
@@ -163,14 +199,14 @@ def parse_statement(company_code, cfg, years, report_basis):
             raise RuntimeError(f"Could not read {cfg['title']} table for {company_code} in {fetch_year}.")
 
         year_values = {year: rows_by_year.get(year, {}) for year in period_cols}
-        for _, record in data.iterrows():
-            label = clean_label(record[label_col])
+        for record in data.iter_records():
+            label = clean_label(record.get(label_col))
             if not label or label == cfg["title"]:
                 continue
             if label not in row_order:
                 row_order.append(label)
             for year, value_col in period_cols.items():
-                year_values[year][label] = to_number(record[value_col])
+                year_values[year][label] = to_number(record.get(value_col))
         rows_by_year.update(year_values)
         time.sleep(1.0)
 
