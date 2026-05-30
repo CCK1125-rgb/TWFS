@@ -21,6 +21,14 @@ function sendJson(res, status, payload) {
   res.end(JSON.stringify(payload));
 }
 
+function publicErrorMessage(error) {
+  const message = error.message || "Unexpected error.";
+  if (/FOR SECURITY REASONS|THIS PAGE CAN NOT BE ACCESSED|SECURITY REASONS/i.test(message)) {
+    return "MOPS/eMOPS blocked this Render server's request for security reasons. The website is online, but workbook generation needs a host or proxy that MOPS allows.";
+  }
+  return message;
+}
+
 async function readRequestJson(req) {
   let body = "";
   for await (const chunk of req) {
@@ -134,7 +142,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(405);
     res.end("Method not allowed");
   } catch (error) {
-    sendJson(res, 400, { error: error.message || "Unexpected error." });
+    sendJson(res, 400, { error: publicErrorMessage(error) });
   }
 });
 
